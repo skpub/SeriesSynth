@@ -1,0 +1,94 @@
+name: Automated Builds
+
+on:
+  push:
+    branches:
+      - 'master'
+    tags:
+      - '*'
+  pull_request:
+    branches:
+      - 'master'
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - { name: ubuntu-22.04,       os: ubuntu-22.04,   cross-target: '' }
+          - { name: macos-universal,    os: macos-latest,   cross-target: aarch64-apple-darwin }
+          - { name: windows,            os: windows-latest, cross-target: '' }
+    name: Package plugin binaries
+    runs-on: ${{ matrix.os}}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch all git history
+        run: git fetch --force --prune --tags --unshallow
+      
+      - name: Install dependencies
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt update
+          sudo apt install -y libasound2-dev libgl-dev libjack-dev libx11-xcb-dev  libxcb1-dev libxcb-dri2-0-dev libxcb-icccm4-dev libxcursor-dev libxkbcommon-dev libxcb-shape0-dev libxcb-xfixes0-dev
+        
+      - uses: actions/cache@v4
+        if: startsWith(matrix.os, 'windows')
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+          key: ${{ matrix.name }}-${{ matrix.cross-target }}
+      - uses: actions/cache@v4
+        if: "!startsWith(matrix.os, 'windows')"
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: ${{ matrix.name }}-${{ matrix.cross-target }}
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.cross-target }}
+      - name: Ensure macOS target is installed
+        if: startsWith(matrix.os, 'macos')
+        run: rustup target add x86_64-apple-darwin || true
+      - name: Package all targets from bundler.toml
+        run: |
+          package_args=()
+          for package in $(cargo xtask known-packages); do
+            pacakge_args+=("-p" "$package")
+          done
+
+          runner_name=${{ matrix.name }}
+          if [[ $runner_name = 'macos-universal' ]]; then
+            export MACOSX_DEPLOYMENT_TARGET=10.13
+            cargo xtask bundle-universal seriessynth --release
+          else
+            cross_target=${{ matrix.cross-target }}
+            if [[ -n $cross_target ]]; then
+              package_args+=("--target" "$cross_target")
+            fi
+
+            cargo xtask bundle seriessynth --release
+          fi
+
+      - name: Determine build archive name
+        run: |
+          echo "ARCHIVE_NAME=seriessynth-$(date -u +"%Y-%m-%d-%H%m%S")-${{ matrix.name }}" >> "$GITHUB_ENV"
+      - name: Move the packaged seriessynth into a directory
+        run: |
+          mkdir -p "$ARCHIVE_NAME/$ARCHIVE_NAME"
+          mv target/bundled/* "$ARCHIVE_NAME/$ARCHIVE_NAME"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARCHIVE_NAME }}
+          path: ${{ env.ARCHIVE_NAME }}
