@@ -110,6 +110,9 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+
+      - name: Debug
+        run: find artifacts -type f | sort
       
       - name: Get version from tag
         id: get_version
@@ -121,7 +124,7 @@ jobs:
         with:
           name: SeriesSynth ${{ steps.get_version.outputs.VERSION }}
           tag_name: ${{ steps.get_version.outputs.VERSION }}
-          draft: false
-          prerelease: false
+          draft: true
+          prerelease: true
           files: artifacts/*
           generate_release_notes: true
