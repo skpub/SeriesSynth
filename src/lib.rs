@@ -1,9 +1,11 @@
 use nih_plug::prelude::*;
+use nih_plug_vizia::ViziaState;
 use std::array;
 use std::f32::consts;
 use std::sync::Arc;
 use std::collections::HashMap;
 
+mod editor;
 
 const HARMONICS_COUNT: usize = 23;
 
@@ -21,6 +23,9 @@ struct Voice {
 
 #[derive(Params)]
 struct SeriessynthParams {
+    #[persist = "editor-state"]
+    editor_state: Arc<ViziaState>,
+
     #[id = "gain"]
     pub gain: FloatParam,
 
@@ -62,6 +67,7 @@ impl Default for Seriessynth {
 impl Default for SeriessynthParams {
     fn default() -> Self {
         Self {
+            editor_state: editor::default_state(),
             gain: FloatParam::new(
                 "Gain",
                 -10.0,
@@ -144,7 +150,7 @@ impl Seriessynth {
 }
 
 impl Plugin for Seriessynth {
-    const NAME: &'static str = "Sine Test Tone";
+    const NAME: &'static str = "SeriesSynth";
     const VENDOR: &'static str = "skpub";
     const URL: &'static str = "none";
     const EMAIL: &'static str = "satodeyannsu@gmail.com";
@@ -172,6 +178,13 @@ impl Plugin for Seriessynth {
 
     fn params(&self) -> Arc<dyn Params> {
         self.params.clone()
+    }
+
+    fn editor(&mut self, _async_executor: AsyncExecutor<Self>) -> Option<Box<dyn Editor>> {
+        editor::create(
+            self.params.clone(),
+            self.params.editor_state.clone(),
+        )
     }
 
     fn initialize(
@@ -263,4 +276,12 @@ impl ClapPlugin for Seriessynth {
     ];
 }
 
+impl Vst3Plugin for Seriessynth {
+    const VST3_CLASS_ID: [u8; 16] = *b"SeriesSynth     ";
+    const VST3_SUBCATEGORIES: &'static [Vst3SubCategory] =
+        &[Vst3SubCategory::Instrument];
+}
+
+
 nih_export_clap!(Seriessynth);
+nih_export_vst3!(Seriessynth);
