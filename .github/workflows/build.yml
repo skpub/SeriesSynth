@@ -135,7 +135,7 @@ jobs:
         with:
           name: SeriesSynth ${{ steps.get_version.outputs.VERSION }}
           tag_name: ${{ steps.get_version.outputs.VERSION }}
-          draft: true
-          prerelease: true
+          draft: false
+          prerelease: false
           files: artifacts/*
           generate_release_notes: true
