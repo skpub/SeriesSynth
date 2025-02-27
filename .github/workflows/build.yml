@@ -52,9 +52,8 @@ jobs:
         # if: "!startsWith(matrix.os, 'windows')"
         with:
           path: |
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
+            ~/.cargo/registry
+            ~/.cargo/git
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**./Cargo.lock') }}
           restore-keys: |
@@ -113,6 +112,18 @@ jobs:
 
       - name: Debug
         run: find artifacts -type f | sort
+      
+      - name: Create Zip Archive
+        run: |
+          cd artifacts
+          for dir in */; do
+            platform_dir="${dir%/}"
+            echo "Processing $platform_dir"
+            cd "$platform_dir"
+            zip -r "../$platform_dir.zip" ./*
+            cd ..
+          done
+          ls -la *.zip
       
       - name: Get version from tag
         id: get_version
