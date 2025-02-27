@@ -98,7 +98,7 @@ jobs:
         with:
           name: ${{ env.ARCHIVE_NAME }}
           path: ${{ env.ARCHIVE_NAME }}
-      
+
   release:
     name: Create Release
     needs: package
