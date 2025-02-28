@@ -1,13 +1,13 @@
 use nih_plug::prelude::*;
 use nih_plug_vizia::ViziaState;
 use std::array;
-use std::f32::consts;
+use std::f32::{consts, EPSILON};
 use std::sync::Arc;
 use std::collections::HashMap;
 
 mod editor;
 
-const HARMONICS_COUNT: usize = 23;
+const HARMONICS_COUNT: usize = 31;
 
 pub struct Seriessynth {
     params: Arc<SeriessynthParams>,
@@ -15,10 +15,22 @@ pub struct Seriessynth {
     voices: HashMap<u8, Voice>,
 }
 
+enum AHDSR {
+    A,
+    H,
+    D,
+    S,
+    R
+}
+
+
 struct Voice {
     phase: f32,
     midi_note_freq: f32,
     midi_note_gain: Smoother<f32>,
+    ahdsr: AHDSR,
+    envelope: f32,
+    hold: f32,
 }
 
 #[derive(Params)]
@@ -34,6 +46,21 @@ struct SeriessynthParams {
 
     #[id = "higherwaveform"]
     pub higher_waveform: EnumParam<Waveform>,
+
+    #[id = "A"]
+    pub attack: FloatParam,
+
+    #[id = "H"]
+    pub hold: FloatParam,
+
+    #[id = "D"]
+    pub decay: FloatParam,
+
+    #[id = "S"]
+    pub sustain: FloatParam,
+
+    #[id = "R"]
+    pub release: FloatParam,
 
     #[nested(array, group= "harmonics")]
     pub harmonics: [ArrayParams; HARMONICS_COUNT]
@@ -58,7 +85,7 @@ impl Default for Seriessynth {
     fn default() -> Self {
         Self {
             params: Arc::new(SeriessynthParams::default()),
-            sample_rate: 44100.0,
+            sample_rate: 96000.0,
             voices: HashMap::new(),
         }
     }
@@ -92,24 +119,61 @@ impl Default for SeriessynthParams {
             .with_value_to_string(formatters::v2s_f32_hz_then_khz(0))
             .with_string_to_value(formatters::s2v_f32_hz_then_khz()),
             higher_waveform: EnumParam::new("Base Waveform", Waveform::None),
+            attack: FloatParam::new(
+                "Attack",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            hold: FloatParam::new(
+                "Hold",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            decay: FloatParam::new(
+                "Decay",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            sustain: FloatParam::new(
+                "Sustain",
+                1.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
+            release: FloatParam::new(
+                "Release",
+                0.0,
+                FloatRange::Linear { min: 0.0, max: 1.0 },
+            ),
             harmonics: array::from_fn(|i| {
                 if i == 0 {
                     ArrayParams {
                         nope: FloatParam::new(
                             "1倍音",
                             1.0,
-                            FloatRange::Linear { min: 0.0, max: 1.0 },
+                            FloatRange::Linear {
+                                min: 0.0,
+                                max: util::db_to_gain(0.0),
+                            },
                         )
-                        .with_smoother(SmoothingStyle::Linear(3.0)),
+                        .with_unit(" dB")
+                        .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+                        .with_string_to_value(formatters::s2v_f32_gain_to_db())
+                        .with_smoother(SmoothingStyle::Logarithmic(10.0)),
                     }
                 } else {
                     ArrayParams {
                         nope: FloatParam::new(
-                            format!("{}倍音", i + 1),
+                            &format!("{:02}倍音", i + 1),
                             0.0,
-                            FloatRange::Linear { min: 0.0, max: 1.0 },
+                            FloatRange::Linear {
+                                min: 0.0,
+                                max: util::db_to_gain(0.0),
+                            },
                         )
-                        .with_smoother(SmoothingStyle::Linear(3.0)),
+                        .with_unit(" dB")
+                        .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
+                        .with_string_to_value(formatters::s2v_f32_gain_to_db())
+                        .with_smoother(SmoothingStyle::Logarithmic(10.0)),
                     }
                 }
             })
@@ -117,8 +181,16 @@ impl Default for SeriessynthParams {
     }
 }
 
+struct AhdsrValue {
+    attack: f32,
+    hold: f32,
+    decay: f32,
+    sustain: f32,
+    release: f32,
+}
+
 impl Voice {
-    fn calculate(&mut self, sample_rate: f32, series: &[f32; HARMONICS_COUNT]) -> f32 {
+    fn calculate(&mut self, sample_rate: f32, series: &[f32; HARMONICS_COUNT], ahdsr_value: &AhdsrValue) -> f32 {
         let phase_delta = self.midi_note_freq / sample_rate;
         // let sine = (self.phase * consts::TAU).sin();
         let wave = self.wave_gen(self.phase, series);
@@ -127,7 +199,50 @@ impl Voice {
         if self.phase >= 1.0 {
             self.phase -= 1.0;
         }
-        wave
+        match self.ahdsr {
+            AHDSR::A => {
+                if ahdsr_value.attack < EPSILON {
+                    self.ahdsr = AHDSR::H;
+                    self.envelope = 1.0;
+                } else {
+                    self.envelope += 1.0 / (sample_rate * ahdsr_value.attack);
+                    if self.envelope >= 1.0 {
+                        self.envelope = 1.0;
+                        self.ahdsr = AHDSR::H;
+                    }
+                }
+            }
+            AHDSR::H => {
+                self.hold += 1.0 / sample_rate;
+                if self.hold + 1.0 / sample_rate >= ahdsr_value.hold {
+                    self.ahdsr = AHDSR::D;
+                }
+            }
+            AHDSR::D => {
+                if ahdsr_value.decay < EPSILON {
+                    self.ahdsr = AHDSR::S;
+                    self.envelope = ahdsr_value.sustain;
+                } else {
+                    self.envelope -= 1.0 / (sample_rate * ahdsr_value.decay);
+                    if self.envelope <= ahdsr_value.sustain {
+                        self.ahdsr = AHDSR::S;
+                    }
+                }
+            }
+            AHDSR::S => {
+            }
+            AHDSR::R => {
+                if ahdsr_value.release < EPSILON {
+                    self.envelope = 0.0;
+                } else {
+                    self.envelope -= 1.0 / (sample_rate * ahdsr_value.release);
+                    if self.envelope <= 0.0 {
+                        self.envelope = 0.0;
+                    }
+                }
+            }
+        }
+        wave * self.envelope
     }
 
     fn wave_gen(&self, phase: f32, series: &[f32; HARMONICS_COUNT]) -> f32 {
@@ -206,12 +321,19 @@ impl Plugin for Seriessynth {
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
+        let ahdsr: AhdsrValue = AhdsrValue {
+            attack: self.params.attack.smoothed.next(),
+            hold: self.params.hold.smoothed.next(),
+            decay: self.params.decay.smoothed.next(),
+            sustain: self.params.sustain.smoothed.next(),
+            release: self.params.release.smoothed.next(),
+        };
         let mut next_event = context.next_event();
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
             let mut output_sample = 0.0;
             let gain = self.params.gain.smoothed.next();
 
-            let sine =  {
+            let _sine =  {
 
                 while let Some(event) = next_event {
                     if event.timing() > sample_id as u32 {
@@ -220,16 +342,20 @@ impl Plugin for Seriessynth {
 
                     match event {
                         NoteEvent::NoteOn { note, velocity, .. } => {
-                            let voice = self.voices.entry(note).or_insert_with(|| Voice {
+                            let voice = Voice {
                                 phase: 0.0,
                                 midi_note_freq: util::midi_note_to_freq(note),
                                 midi_note_gain: Smoother::new(SmoothingStyle::Linear(5.0)),
-                            });
+                                ahdsr: AHDSR::A,
+                                envelope: 0.0,
+                                hold: 0.0,
+                            };
                             voice.midi_note_gain.set_target(self.sample_rate, velocity);
+                            self.voices.insert(note, voice);
                         }
                         NoteEvent::NoteOff { note, .. } => {
                             if let Some(voice) = self.voices.get_mut(&note) {
-                                voice.midi_note_gain.set_target(self.sample_rate, 0.0);
+                                voice.ahdsr = AHDSR::R;
                             }
                         }
                         NoteEvent::PolyPressure { note, pressure, .. } => {
@@ -245,7 +371,7 @@ impl Plugin for Seriessynth {
 
                 let series = self.series();
                 for voice in self.voices.values_mut() {
-                    output_sample += voice.calculate(self.sample_rate, &series) * voice.midi_note_gain.next();
+                    output_sample += voice.calculate(self.sample_rate, &series, &ahdsr) * voice.midi_note_gain.next();
                 }
 
                 output_sample *= util::db_to_gain_fast(gain);
