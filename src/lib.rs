@@ -20,7 +20,7 @@ enum AHDSR {
     H,
     D,
     S,
-    R
+    R,
 }
 
 
@@ -181,79 +181,6 @@ impl Default for SeriessynthParams {
     }
 }
 
-struct AhdsrValue {
-    attack: f32,
-    hold: f32,
-    decay: f32,
-    sustain: f32,
-    release: f32,
-}
-
-impl Voice {
-    fn calculate(&mut self, sample_rate: f32, series: &[f32; HARMONICS_COUNT], ahdsr_value: &AhdsrValue) -> f32 {
-        let phase_delta = self.midi_note_freq / sample_rate;
-        // let sine = (self.phase * consts::TAU).sin();
-        let wave = self.wave_gen(self.phase, series);
-
-        self.phase += phase_delta;
-        if self.phase >= 1.0 {
-            self.phase -= 1.0;
-        }
-        match self.ahdsr {
-            AHDSR::A => {
-                if ahdsr_value.attack < EPSILON {
-                    self.ahdsr = AHDSR::H;
-                    self.envelope = 1.0;
-                } else {
-                    self.envelope += 1.0 / (sample_rate * ahdsr_value.attack);
-                    if self.envelope >= 1.0 {
-                        self.envelope = 1.0;
-                        self.ahdsr = AHDSR::H;
-                    }
-                }
-            }
-            AHDSR::H => {
-                self.hold += 1.0 / sample_rate;
-                if self.hold + 1.0 / sample_rate >= ahdsr_value.hold {
-                    self.ahdsr = AHDSR::D;
-                }
-            }
-            AHDSR::D => {
-                if ahdsr_value.decay < EPSILON {
-                    self.ahdsr = AHDSR::S;
-                    self.envelope = ahdsr_value.sustain;
-                } else {
-                    self.envelope -= 1.0 / (sample_rate * ahdsr_value.decay);
-                    if self.envelope <= ahdsr_value.sustain {
-                        self.ahdsr = AHDSR::S;
-                    }
-                }
-            }
-            AHDSR::S => {
-            }
-            AHDSR::R => {
-                if ahdsr_value.release < EPSILON {
-                    self.envelope = 0.0;
-                } else {
-                    self.envelope -= 1.0 / (sample_rate * ahdsr_value.release);
-                    if self.envelope <= 0.0 {
-                        self.envelope = 0.0;
-                    }
-                }
-            }
-        }
-        wave * self.envelope
-    }
-
-    fn wave_gen(&self, phase: f32, series: &[f32; HARMONICS_COUNT]) -> f32 {
-        let mut v = 0.0;
-        for i in 0..HARMONICS_COUNT {
-            v += series[i] * (((i+1) as f32) * phase * consts::TAU).sin();
-        }
-        v
-    }
-}
-
 impl Seriessynth {
     fn series(&self) -> [f32; HARMONICS_COUNT] {
         let mut series = [0.0; HARMONICS_COUNT];
@@ -261,6 +188,70 @@ impl Seriessynth {
             series[i] = harmonic.nope.smoothed.next();
         }
         series
+    }
+}
+
+impl Seriessynth {
+    fn calculate(&mut self) -> f32 {
+        let series = self.series();
+        let mut final_wave = 0.0;
+        for voice in self.voices.values_mut() {
+            let phase_delta = voice.midi_note_freq / self.sample_rate;
+            let mut wave = 0.0;
+            for i in 0..HARMONICS_COUNT {
+                wave += series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+            }
+            voice.phase += phase_delta;
+            if voice.phase >= 1.0 {
+                voice.phase -= 1.0;
+            }
+            match voice.ahdsr {
+                AHDSR::A => {
+                    if self.params.attack.smoothed.next() < EPSILON {
+                        voice.ahdsr = AHDSR::H;
+                        voice.envelope = 1.0;
+                    } else {
+                        voice.envelope += 1.0 / (self.sample_rate * self.params.attack.smoothed.next());
+                        if voice.envelope >= 1.0 {
+                            voice.envelope = 1.0;
+                            voice.ahdsr = AHDSR::H;
+                        }
+                    }
+                }
+                AHDSR::H => {
+                    voice.hold += 1.0 / self.sample_rate;
+                    if voice.hold + 1.0 / self.sample_rate >= self.params.hold.smoothed.next() {
+                        voice.ahdsr = AHDSR::D;
+                    }
+                }
+                AHDSR::D => {
+                    if self.params.decay.smoothed.next() < EPSILON {
+                        voice.ahdsr = AHDSR::S;
+                        voice.envelope = self.params.sustain.smoothed.next();
+                    } else {
+                        voice.envelope -= 1.0 / (self.sample_rate * self.params.decay.smoothed.next());
+                        if voice.envelope <= self.params.sustain.smoothed.next() {
+                            voice.ahdsr = AHDSR::S;
+                        }
+                    }
+                }
+                AHDSR::S => {
+
+                }
+                AHDSR::R => {
+                    if self.params.release.smoothed.next() < EPSILON {
+                        voice.envelope = 0.0;
+                    } else {
+                        voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
+                        if voice.envelope <= 0.0 {
+                            voice.envelope = 0.0;
+                        }
+                    }
+                }
+            }
+            final_wave += wave * voice.envelope;
+        }
+        final_wave
     }
 }
 
@@ -315,26 +306,19 @@ impl Plugin for Seriessynth {
     fn reset(&mut self) {
         self.voices.clear();
     }
+
     fn process(
         &mut self,
         buffer: &mut Buffer,
         _aux: &mut AuxiliaryBuffers,
         context: &mut impl ProcessContext<Self>,
     ) -> ProcessStatus {
-        let ahdsr: AhdsrValue = AhdsrValue {
-            attack: self.params.attack.smoothed.next(),
-            hold: self.params.hold.smoothed.next(),
-            decay: self.params.decay.smoothed.next(),
-            sustain: self.params.sustain.smoothed.next(),
-            release: self.params.release.smoothed.next(),
-        };
         let mut next_event = context.next_event();
         for (sample_id, channel_samples) in buffer.iter_samples().enumerate() {
-            let mut output_sample = 0.0;
             let gain = self.params.gain.smoothed.next();
 
+            let output_sample;
             let _sine =  {
-
                 while let Some(event) = next_event {
                     if event.timing() > sample_id as u32 {
                         break;
@@ -369,12 +353,11 @@ impl Plugin for Seriessynth {
                     next_event = context.next_event();
                 }
 
-                let series = self.series();
-                for voice in self.voices.values_mut() {
-                    output_sample += voice.calculate(self.sample_rate, &series, &ahdsr) * voice.midi_note_gain.next();
-                }
-
-                output_sample *= util::db_to_gain_fast(gain);
+                // for voice in self.voices.values_mut() {
+                //     // output_sample += voice.calculate(self.sample_rate, &series, &ahdsr) * voice.midi_note_gain.next();
+                //     output_sample += self.calculate(voice) * voice.midi_note_gain.next();
+                // }
+                output_sample = self.calculate() * util::db_to_gain_fast(gain);
             };
 
             for sample in channel_samples {
