@@ -3,7 +3,7 @@ use nih_plug_vizia::ViziaState;
 use std::array;
 use std::f32::{consts, EPSILON};
 use std::sync::Arc;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
 mod editor;
 
@@ -12,7 +12,7 @@ const HARMONICS_COUNT: usize = 31;
 pub struct Seriessynth {
     params: Arc<SeriessynthParams>,
     sample_rate: f32,
-    voices: HashMap<u8, Voice>,
+    voices: HashMap<u8, VecDeque<Voice>>,
 }
 
 enum AHDSR {
@@ -21,6 +21,7 @@ enum AHDSR {
     D,
     S,
     R,
+    DEAD,
 }
 
 
@@ -31,6 +32,7 @@ struct Voice {
     ahdsr: AHDSR,
     envelope: f32,
     hold: f32,
+    dead: f32,
 }
 
 #[derive(Params)]
@@ -195,61 +197,82 @@ impl Seriessynth {
     fn calculate(&mut self) -> f32 {
         let series = self.series();
         let mut final_wave = 0.0;
-        for voice in self.voices.values_mut() {
-            let phase_delta = voice.midi_note_freq / self.sample_rate;
-            let mut wave = 0.0;
-            for i in 0..HARMONICS_COUNT {
-                wave += series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+        for voice_queue in self.voices.values_mut() {
+            if voice_queue.len() == 0 {
+                continue;
             }
-            voice.phase += phase_delta;
-            if voice.phase >= 1.0 {
-                voice.phase -= 1.0;
-            }
-            match voice.ahdsr {
-                AHDSR::A => {
-                    if self.params.attack.smoothed.next() < EPSILON {
-                        voice.ahdsr = AHDSR::H;
-                        voice.envelope = 1.0;
-                    } else {
-                        voice.envelope += 1.0 / (self.sample_rate * self.params.attack.smoothed.next());
-                        if voice.envelope >= 1.0 {
-                            voice.envelope = 1.0;
+            let mut kill = false;
+            for voice in voice_queue.iter_mut() {
+                let phase_delta = voice.midi_note_freq / self.sample_rate;
+                let mut wave = 0.0;
+                for i in 0..HARMONICS_COUNT {
+                    wave += series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+                }
+                voice.phase += phase_delta;
+                if voice.phase >= 1.0 {
+                    voice.phase -= 1.0;
+                }
+                match voice.ahdsr {
+                    AHDSR::A => {
+                        if self.params.attack.smoothed.next() < EPSILON {
                             voice.ahdsr = AHDSR::H;
+                            voice.envelope = 1.0;
+                        } else {
+                            voice.envelope += 1.0 / (self.sample_rate * self.params.attack.smoothed.next());
+                            if voice.envelope >= 1.0 {
+                                voice.envelope = 1.0;
+                                voice.ahdsr = AHDSR::H;
+                            }
                         }
                     }
-                }
-                AHDSR::H => {
-                    voice.hold += 1.0 / self.sample_rate;
-                    if voice.hold + 1.0 / self.sample_rate >= self.params.hold.smoothed.next() {
-                        voice.ahdsr = AHDSR::D;
+                    AHDSR::H => {
+                        voice.hold += 1.0 / self.sample_rate;
+                        if voice.hold + 1.0 / self.sample_rate >= self.params.hold.smoothed.next() {
+                            voice.ahdsr = AHDSR::D;
+                        }
                     }
-                }
-                AHDSR::D => {
-                    if self.params.decay.smoothed.next() < EPSILON {
-                        voice.ahdsr = AHDSR::S;
-                        voice.envelope = self.params.sustain.smoothed.next();
-                    } else {
-                        voice.envelope -= 1.0 / (self.sample_rate * self.params.decay.smoothed.next());
-                        if voice.envelope <= self.params.sustain.smoothed.next() {
+                    AHDSR::D => {
+                        if self.params.decay.smoothed.next() < EPSILON {
                             voice.ahdsr = AHDSR::S;
+                            voice.envelope = self.params.sustain.smoothed.next();
+                        } else {
+                            voice.envelope -= 1.0 / (self.sample_rate * self.params.decay.smoothed.next());
+                            if voice.envelope <= self.params.sustain.smoothed.next() {
+                                voice.ahdsr = AHDSR::S;
+                            }
                         }
                     }
-                }
-                AHDSR::S => {
+                    AHDSR::S => {
 
-                }
-                AHDSR::R => {
-                    if self.params.release.smoothed.next() < EPSILON {
-                        voice.envelope = 0.0;
-                    } else {
-                        voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
-                        if voice.envelope <= 0.0 {
+                    }
+                    AHDSR::R => {
+                        if self.params.release.smoothed.next() < EPSILON {
                             voice.envelope = 0.0;
+                        } else {
+                            voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
+                            if voice.envelope <= 0.0 {
+                                voice.envelope = 0.0;
+                                kill = true;
+                            }
+                        }
+                    }
+                    AHDSR::DEAD => {
+                        if self.params.release.smoothed.next() < EPSILON {
+                            voice.envelope = 0.0;
+                        } else {
+                            voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
+                            if voice.envelope <= 0.0 {
+                                voice.envelope = 0.0;
+                                kill = true;
+                            }
                         }
                     }
                 }
+                final_wave += wave * voice.envelope;
             }
-            final_wave += wave * voice.envelope;
+            if kill {
+                voice_queue.pop_back();
+            }
         }
         final_wave
     }
@@ -326,6 +349,21 @@ impl Plugin for Seriessynth {
 
                     match event {
                         NoteEvent::NoteOn { note, velocity, .. } => {
+                            
+                            // If the note is already playing, begin the kill phase.
+                            match self.voices.get_mut(&note) {
+                                Some(voice_queue) => {
+                                    let voice = voice_queue.get_mut(0);
+                                    match voice {
+                                        Some(voice) => {
+                                            voice.ahdsr = AHDSR::DEAD;
+                                            voice.dead = 0.0;
+                                        }
+                                        None => (),
+                                    }
+                                }
+                                None => (),
+                            }
                             let voice = Voice {
                                 phase: 0.0,
                                 midi_note_freq: util::midi_note_to_freq(note),
@@ -333,18 +371,25 @@ impl Plugin for Seriessynth {
                                 ahdsr: AHDSR::A,
                                 envelope: 0.0,
                                 hold: 0.0,
+                                dead: 0.0,
                             };
                             voice.midi_note_gain.set_target(self.sample_rate, velocity);
-                            self.voices.insert(note, voice);
+                            let queue = self.voices.entry(note).or_insert_with(VecDeque::new);
+                            queue.push_front(voice);
                         }
                         NoteEvent::NoteOff { note, .. } => {
-                            if let Some(voice) = self.voices.get_mut(&note) {
-                                voice.ahdsr = AHDSR::R;
+                            if let Some(voice_queue) = self.voices.get_mut(&note) {
+                                voice_queue.get_mut(0).unwrap().ahdsr = AHDSR::R;
                             }
                         }
                         NoteEvent::PolyPressure { note, pressure, .. } => {
-                            if let Some(voice) = self.voices.get_mut(&note) {
-                                voice.midi_note_gain.set_target(self.sample_rate, pressure);
+                            if let Some(voice_queue) = self.voices.get_mut(&note) {
+                                match voice_queue.get_mut(0) {
+                                    Some(voice) => {
+                                        voice.midi_note_gain.set_target(self.sample_rate, pressure);
+                                    }
+                                    None => (),
+                                }
                             }
                         }
                         _ => (),
