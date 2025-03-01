@@ -117,6 +117,33 @@ pub(crate) fn create(
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.release);
+
+                    Label::new(cx, &format!("{}倍音より上の波形", HARMONICS_COUNT))
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.higher_waveform);
+
+                    Label::new(cx, "倍音係数")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.amp_width);
+
+                    Label::new(cx, "Noise")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.noise);
                 })
                 .row_between(Pixels(0.0))
                 .child_left(Stretch(1.0))

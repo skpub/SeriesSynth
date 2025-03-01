@@ -1,11 +1,12 @@
 use nih_plug::prelude::*;
+use nih_plug::params::enums::Enum;
 use nih_plug_vizia::ViziaState;
+use rand::Rng;
 use std::array;
-use std::env::current_exe;
 use std::f32::{consts, EPSILON};
-use std::sync::{Arc, Mutex};
+use std::fmt::Debug;
+use std::sync::Arc;
 use std::collections::{HashMap, VecDeque};
-use std::thread::current;
 
 mod editor;
 
@@ -24,6 +25,46 @@ enum AHDSR {
     S,
     R,
     DEAD,
+}
+
+#[derive(Debug, PartialEq, Enum)]
+enum Waveform {
+    None,
+    Triangle,
+    Sawtooth,
+    Square,
+}
+
+#[derive(Debug, PartialEq)]
+enum AmpWidth {
+    One,
+    N,
+    N2,
+}
+
+impl Enum for AmpWidth {
+    fn variants() -> &'static [&'static str] {
+        &["1", "1/N", "1/N^2"]
+    }
+
+    fn ids() -> Option<&'static [&'static str]> {
+        Some(&["1", "N", "N2"])
+    }
+    fn to_index(self) -> usize {
+        match self {
+            AmpWidth::One => 0,
+            AmpWidth::N => 1,
+            AmpWidth::N2 => 2,
+        }
+    }
+    fn from_index(index: usize) -> Self {
+        match index {
+            0 => AmpWidth::One,
+            1 => AmpWidth::N,
+            2 => AmpWidth::N2,
+            _ => panic!("Invalid index"),
+        }
+    }
 }
 
 
@@ -67,22 +108,19 @@ struct SeriessynthParams {
     pub release: FloatParam,
 
     #[nested(array, group= "harmonics")]
-    pub harmonics: [ArrayParams; HARMONICS_COUNT]
+    pub harmonics: [ArrayParams; HARMONICS_COUNT],
+
+    #[id = "ampwidth"]
+    pub amp_width: EnumParam<AmpWidth>,
+
+    #[id = "noise"]
+    pub noise: FloatParam,
 }
 
 #[derive(Params)]
 struct ArrayParams {
     #[id = "noope"]
     pub nope: FloatParam,
-}
-
-#[derive(Debug, PartialEq, Enum)]
-enum Waveform {
-    None,
-    Triangle,
-    Sawtooth,
-    Square,
-    Noise,
 }
 
 impl Default for Seriessynth {
@@ -155,14 +193,11 @@ impl Default for SeriessynthParams {
                             "1倍音",
                             1.0,
                             FloatRange::Linear {
-                                min: 0.0,
-                                max: util::db_to_gain(0.0),
+                                min: -1.0,
+                                max: 1.0,
                             },
                         )
-                        .with_unit(" dB")
-                        .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-                        .with_string_to_value(formatters::s2v_f32_gain_to_db())
-                        .with_smoother(SmoothingStyle::Logarithmic(10.0)),
+                        .with_smoother(SmoothingStyle::Linear(10.0)),
                     }
                 } else {
                     ArrayParams {
@@ -170,17 +205,23 @@ impl Default for SeriessynthParams {
                             &format!("{:02}倍音", i + 1),
                             0.0,
                             FloatRange::Linear {
-                                min: 0.0,
-                                max: util::db_to_gain(0.0),
+                                min: -1.0,
+                                max: 1.0,
                             },
                         )
-                        .with_unit(" dB")
-                        .with_value_to_string(formatters::v2s_f32_gain_to_db(2))
-                        .with_string_to_value(formatters::s2v_f32_gain_to_db())
-                        .with_smoother(SmoothingStyle::Logarithmic(10.0)),
+                        .with_smoother(SmoothingStyle::Linear(10.0)),
                     }
                 }
-            })
+            }),
+            amp_width: EnumParam::new("倍音係数", AmpWidth::One),
+            noise: FloatParam::new(
+                "Noise",
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 1.0,
+                },
+            )
         }
     }
 }
@@ -199,6 +240,10 @@ impl Seriessynth {
 impl Seriessynth {
     fn calculate(&mut self) -> f32 {
         let series = self.series();
+        let params = Arc::clone(&self.params);
+        let higher_waveform = params.higher_waveform.value();
+        let amp_width = params.amp_width.value();
+        let noise = params.noise.smoothed.next();
         let mut final_wave = 0.0;
         for voice_queue in self.voices.values_mut() {
             if voice_queue.len() == 0 {
@@ -209,7 +254,32 @@ impl Seriessynth {
                 let phase_delta = voice.midi_note_freq / self.sample_rate;
                 let mut wave = 0.0;
                 for i in 0..HARMONICS_COUNT {
-                    wave += series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+                    wave +=  match amp_width {
+                            AmpWidth::One => 1.0,
+                            AmpWidth::N => 1.0 / (i as f32 + 1.0),
+                            AmpWidth::N2 => 1.0 / (((i as f32 + 1.0) * (i as f32 + 1.0)))
+                        } * series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+                }
+                let nyquist_index = (self.sample_rate as f32 / voice.midi_note_freq).floor() as usize;
+                if higher_waveform == Waveform::Square {
+                    for i in (HARMONICS_COUNT >> 1)..(nyquist_index >> 1) {
+                        wave += (1.0 / (2.0 * i as f32) as f32) * ((i as f32) * voice.phase * consts::TAU).sin();
+                    }
+                }
+                if higher_waveform == Waveform::Triangle {
+                    for i in (HARMONICS_COUNT>>1)..(nyquist_index >> 1) {
+                        wave += if i % 2 == 0 {-1.0} else {1.0} * (1.0 / (2.0 * i as f32)) * (1.0 / (2.0 * i as f32)) * ((i as f32) * voice.phase * consts::TAU).sin();
+                    }
+                }
+                if higher_waveform == Waveform::Sawtooth {
+                    for i in HARMONICS_COUNT+1..nyquist_index {
+                        wave += (1.0 / i as f32) * ((i as f32) * voice.phase * consts::TAU).sin();
+                    }
+                }
+                if noise > EPSILON {
+                    let mut rng = rand::thread_rng();
+                    let f: f32 = rng.gen_range(-noise, noise);
+                    wave += f;
                 }
                 voice.phase += phase_delta;
                 if voice.phase >= 1.0 {
