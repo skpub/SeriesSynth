@@ -1,9 +1,11 @@
 use nih_plug::prelude::*;
 use nih_plug_vizia::ViziaState;
 use std::array;
+use std::env::current_exe;
 use std::f32::{consts, EPSILON};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::collections::{HashMap, VecDeque};
+use std::thread::current;
 
 mod editor;
 
@@ -185,8 +187,9 @@ impl Default for SeriessynthParams {
 
 impl Seriessynth {
     fn series(&self) -> [f32; HARMONICS_COUNT] {
+        let current_params_ref = Arc::clone(&self.params);
         let mut series = [0.0; HARMONICS_COUNT];
-        for (i, harmonic) in self.params.harmonics.iter().enumerate() {
+        for (i, harmonic) in current_params_ref.harmonics.iter().enumerate() {
             series[i] = harmonic.nope.smoothed.next();
         }
         series
@@ -248,6 +251,7 @@ impl Seriessynth {
                     AHDSR::R => {
                         if self.params.release.smoothed.next() < EPSILON {
                             voice.envelope = 0.0;
+                            kill = true;
                         } else {
                             voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
                             if voice.envelope <= 0.0 {
@@ -259,6 +263,7 @@ impl Seriessynth {
                     AHDSR::DEAD => {
                         if self.params.release.smoothed.next() < EPSILON {
                             voice.envelope = 0.0;
+                            kill = true;
                         } else {
                             voice.envelope -= 1.0 / (self.sample_rate * self.params.release.smoothed.next());
                             if voice.envelope <= 0.0 {
