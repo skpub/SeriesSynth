@@ -115,6 +115,9 @@ struct SeriessynthParams {
 
     #[id = "noise"]
     pub noise: FloatParam,
+
+    #[id = "Base Freq factor"]
+    pub base_freq_factor: IntParam,
 }
 
 #[derive(Params)]
@@ -221,6 +224,14 @@ impl Default for SeriessynthParams {
                     min: 0.0,
                     max: 1.0,
                 },
+            ),
+            base_freq_factor: IntParam::new(
+                "Base Freq factor",
+                1,
+                IntRange::Linear {
+                    min: 1,
+                    max: 23,
+                },
             )
         }
     }
@@ -244,6 +255,7 @@ impl Seriessynth {
         let higher_waveform = params.higher_waveform.value();
         let amp_width = params.amp_width.value();
         let noise = params.noise.smoothed.next();
+        let base_freq_factor = params.base_freq_factor.smoothed.next();
         let mut final_wave = 0.0;
         for voice_queue in self.voices.values_mut() {
             if voice_queue.len() == 0 {
@@ -258,22 +270,23 @@ impl Seriessynth {
                             AmpWidth::One => 1.0,
                             AmpWidth::N => 1.0 / (i as f32 + 1.0),
                             AmpWidth::N2 => 1.0 / (((i as f32 + 1.0) * (i as f32 + 1.0)))
-                        } * series[i] * (((i+1) as f32) * voice.phase * consts::TAU).sin();
+                        } * series[i] * (((i+1) as f32) * voice.phase * (base_freq_factor as f32) * consts::TAU).sin();
                 }
-                let nyquist_index = (self.sample_rate as f32 / voice.midi_note_freq).floor() as usize;
+                let nyquist_index = (self.sample_rate as f32 / (voice.midi_note_freq * base_freq_factor as f32)).floor() as usize;
                 if higher_waveform == Waveform::Square {
                     for i in (HARMONICS_COUNT >> 1)..(nyquist_index >> 1) {
-                        wave += (1.0 / (2.0 * i as f32) as f32) * ((i as f32) * voice.phase * consts::TAU).sin();
+                        wave += (1.0 / (2.0 * i as f32) as f32) * ((i as f32) * voice.phase * (base_freq_factor as f32) * consts::TAU).sin();
                     }
                 }
                 if higher_waveform == Waveform::Triangle {
                     for i in (HARMONICS_COUNT>>1)..(nyquist_index >> 1) {
-                        wave += if i % 2 == 0 {-1.0} else {1.0} * (1.0 / (2.0 * i as f32)) * (1.0 / (2.0 * i as f32)) * ((i as f32) * voice.phase * consts::TAU).sin();
+                        wave += if i % 2 == 0 {-1.0} else {1.0} * (1.0 / (2.0 * i as f32)) * (1.0 / (2.0 * i as f32))
+                            * ((i as f32) * voice.phase * (base_freq_factor as f32) * consts::TAU).sin();
                     }
                 }
                 if higher_waveform == Waveform::Sawtooth {
                     for i in HARMONICS_COUNT+1..nyquist_index {
-                        wave += (1.0 / i as f32) * ((i as f32) * voice.phase * consts::TAU).sin();
+                        wave += (1.0 / i as f32) * ((i as f32) * voice.phase * (base_freq_factor as f32) * consts::TAU).sin();
                     }
                 }
                 if noise > EPSILON {

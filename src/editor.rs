@@ -1,4 +1,4 @@
-use nih_plug::prelude::{util, Editor};
+use nih_plug::prelude::Editor;
 use nih_plug_vizia::vizia::prelude::*;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
@@ -14,7 +14,7 @@ struct Data {
 impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (600, 1000))
+    ViziaState::new(|| (700, 1000))
 }
 
 pub(crate) fn create(
@@ -42,7 +42,6 @@ pub(crate) fn create(
 
             HStack::new(cx, |cx| {
                 VStack::new(cx, |cx| {
-
                     for i in 0..HARMONICS_COUNT {
                         HStack::new(cx, |cx| {
                             let index = i;
@@ -55,8 +54,10 @@ pub(crate) fn create(
                                 .child_top(Stretch(1.0))
                                 .child_bottom(Pixels(0.0));
                             ParamSlider::new(cx, Data::params, move |params| &params.harmonics[index].nope)
-                                .height(Pixels(20.0));
-                        });
+                                .height(Pixels(25.0))
+                                .width(Stretch(1.0));
+                        })
+                        .width(Pixels(300.0));
                     }
                 })
                 .row_between(Pixels(5.0))
@@ -144,6 +145,15 @@ pub(crate) fn create(
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.noise);
+
+                    Label::new(cx, "Base freq factor")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.base_freq_factor);
                 })
                 .row_between(Pixels(0.0))
                 .child_left(Stretch(1.0))
