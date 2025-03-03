@@ -1,5 +1,6 @@
 use nih_plug::prelude::Editor;
 use nih_plug_vizia::vizia::prelude::*;
+use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
@@ -154,6 +155,24 @@ pub(crate) fn create(
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.base_freq_factor);
+
+                    Label::new(cx, "Base freq inverse factor")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.base_freq_inverse_factor);
+                    ParamWidgetBase::build_view(params, params_to_param, content)
+
+                    Label::new(cx, "Plus N Cent")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(30.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
                 })
                 .row_between(Pixels(0.0))
                 .child_left(Stretch(1.0))
