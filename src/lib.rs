@@ -16,6 +16,7 @@ pub struct Seriessynth {
     params: Arc<SeriessynthParams>,
     sample_rate: f32,
     voices: HashMap<u8, VecDeque<Voice>>,
+    lfo_phase: f32,
 }
 
 enum AHDSR {
@@ -33,6 +34,13 @@ enum Waveform {
     Triangle,
     Sawtooth,
     Square,
+}
+
+#[derive(Debug, PartialEq, Enum)]
+enum LFO_Dest {
+    None,
+    Phase,
+    Gain,
 }
 
 #[derive(Debug, PartialEq)]
@@ -124,6 +132,15 @@ struct SeriessynthParams {
 
     #[id = "+ N Cent"]
     pub plus_n_cent: IntParam,
+
+    #[id = "LFO_freq"]
+    pub lfo: FloatParam,
+
+    #[id = "LFO amp"]
+    pub lfo_amp: FloatParam,
+
+    #[id = "LFO dest"]
+    pub lfo_dest: EnumParam<LFO_Dest>,
 }
 
 #[derive(Params)]
@@ -138,6 +155,7 @@ impl Default for Seriessynth {
             params: Arc::new(SeriessynthParams::default()),
             sample_rate: 96000.0,
             voices: HashMap::new(),
+            lfo_phase: 0.0,
         }
     }
 }
@@ -255,6 +273,23 @@ impl Default for SeriessynthParams {
                     max: 1200,
                 },
             ),
+            lfo: FloatParam::new(
+                "LFO",
+                0.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 50.0,
+                },
+            ).with_unit(" Hz"),
+            lfo_amp: FloatParam::new(
+                "LFO amp",
+                1.0,
+                FloatRange::Linear {
+                    min: 0.0,
+                    max: 1.0,
+                },
+            ),
+            lfo_dest: EnumParam::new("LFO dest", LFO_Dest::None),
         }
     }
 }
@@ -280,6 +315,22 @@ impl Seriessynth {
         let base_freq_factor = params.base_freq_factor.smoothed.next();
         let base_freq_inverse_factor = params.base_freq_inverse_factor.smoothed.next();
         let plus_n_cent = params.plus_n_cent.smoothed.next();
+        let lfo_hz = params.lfo.smoothed.next();
+        let lfo_amp = params.lfo_amp.smoothed.next();
+        let lfo_dest = params.lfo_dest.value();
+
+        let lfo_phase_delta = lfo_hz / self.sample_rate;
+        self.lfo_phase = (self.lfo_phase + lfo_phase_delta) % 1.0;
+        let lfo_phase_mod = if lfo_dest == LFO_Dest::Phase {
+            1.0 + lfo_amp * (self.lfo_phase * consts::TAU).sin()
+        } else {
+            1.0
+        };
+        let lfo_gain_mod = if lfo_dest == LFO_Dest::Gain {
+            1.0 + lfo_amp * (self.lfo_phase * consts::TAU).sin()
+        } else {
+            1.0
+        };
 
         let cent_factor = 2f32.powf(plus_n_cent as f32 / 1200.0);
         let freq_factor = (base_freq_factor as f32) / (base_freq_inverse_factor as f32);
@@ -292,7 +343,7 @@ impl Seriessynth {
             }
             let mut kill = false;
             for voice in voice_queue.iter_mut() {
-                let phase_delta = (voice.midi_note_freq * cent_factor * freq_factor) / self.sample_rate;
+                let phase_delta = (voice.midi_note_freq * cent_factor * freq_factor * lfo_phase_mod) / self.sample_rate;
                 let mut wave = 0.0;
                 for i in 0..HARMONICS_COUNT {
                     wave +=  match amp_width {
@@ -305,7 +356,7 @@ impl Seriessynth {
                 if higher_waveform == Waveform::Square {
                     for i in (HARMONICS_COUNT >> 1)..(nyquist_index >> 1) {
                         wave += (1.0 / (2.0 * i as f32) as f32)
-                            * ((i as f32) * voice.phase * freq_factor * consts::TAU).sin();
+                            * ((i as f32) * voice.phase * consts::TAU).sin();
                     }
                 }
                 if higher_waveform == Waveform::Triangle {
@@ -387,7 +438,7 @@ impl Seriessynth {
                         }
                     }
                 }
-                final_wave += wave * voice.envelope;
+                final_wave += wave * voice.envelope * lfo_gain_mod;
             }
             if kill {
                 voice_queue.pop_back();

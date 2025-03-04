@@ -15,7 +15,7 @@ struct Data {
 impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (700, 1000))
+    ViziaState::new(|| (1000, 800))
 }
 
 pub(crate) fn create(
@@ -70,7 +70,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.gain);
@@ -79,7 +79,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.attack);
@@ -88,7 +88,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.hold);
@@ -97,7 +97,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.decay);
@@ -106,7 +106,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.sustain);
@@ -115,7 +115,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.release);
@@ -124,7 +124,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.higher_waveform);
@@ -133,7 +133,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.amp_width);
@@ -142,7 +142,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.noise);
@@ -151,7 +151,7 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.base_freq_factor);
@@ -160,19 +160,51 @@ pub(crate) fn create(
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
                     ParamSlider::new(cx, Data::params, |params| &params.base_freq_inverse_factor);
-                    ParamWidgetBase::build_view(params, params_to_param, content)
 
                     Label::new(cx, "Plus N Cent")
                         .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
                         .font_weight(FontWeightKeyword::Light)
                         .font_size(20.0)
-                        .height(Pixels(30.0))
+                        .height(Pixels(25.0))
                         .child_top(Stretch(1.0))
                         .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.plus_n_cent);
+                })
+                .row_between(Pixels(0.0))
+                .child_left(Stretch(1.0))
+                .child_right(Stretch(1.0));
+
+                VStack::new(cx, |cx| {
+                    Label::new(cx, "LFO Freq")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(25.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.lfo);
+
+                    Label::new(cx, "LFO Dest")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(25.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.lfo_dest);
+
+                    Label::new(cx, "LFO Amp")
+                        .font_family(vec![FamilyOwned::Name(String::from(assets::NOTO_SANS))])
+                        .font_weight(FontWeightKeyword::Light)
+                        .font_size(20.0)
+                        .height(Pixels(25.0))
+                        .child_top(Stretch(1.0))
+                        .child_bottom(Pixels(0.0));
+                    ParamSlider::new(cx, Data::params, |params| &params.lfo_amp);
                 })
                 .row_between(Pixels(0.0))
                 .child_left(Stretch(1.0))
