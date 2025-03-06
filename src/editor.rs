@@ -1,6 +1,5 @@
 use nih_plug::prelude::Editor;
 use nih_plug_vizia::vizia::prelude::*;
-use nih_plug_vizia::widgets::param_base::ParamWidgetBase;
 use nih_plug_vizia::widgets::*;
 use nih_plug_vizia::{assets, create_vizia_editor, ViziaState, ViziaTheming};
 use std::sync::Arc;
@@ -15,7 +14,7 @@ struct Data {
 impl Model for Data {}
 
 pub(crate) fn default_state() -> Arc<ViziaState> {
-    ViziaState::new(|| (1000, 800))
+    ViziaState::new(|| (750, 850))
 }
 
 pub(crate) fn create(
@@ -62,6 +61,7 @@ pub(crate) fn create(
                     }
                 })
                 .row_between(Pixels(5.0))
+                .width(Pixels(320.0))
                 .child_left(Stretch(1.0))
                 .child_right(Stretch(1.0));
 
@@ -175,6 +175,7 @@ pub(crate) fn create(
                     ParamSlider::new(cx, Data::params, |params| &params.plus_n_cent);
                 })
                 .row_between(Pixels(0.0))
+                .width(Pixels(200.0))
                 .child_left(Stretch(1.0))
                 .child_right(Stretch(1.0));
 
@@ -207,6 +208,7 @@ pub(crate) fn create(
                     ParamSlider::new(cx, Data::params, |params| &params.lfo_amp);
                 })
                 .row_between(Pixels(0.0))
+                .width(Pixels(200.0))
                 .child_left(Stretch(1.0))
                 .child_right(Stretch(1.0));
             });

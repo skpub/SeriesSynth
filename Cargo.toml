@@ -1,7 +1,7 @@
 [package]
 name = "seriessynth"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 authors = ["skpub <satodeyannsu@gmail.com>"]
 license = "ISC"
 homepage = "https://youtu.be/dQw4w9WgXcQ"
@@ -19,7 +19,7 @@ rand = "0.6"
 # thread in debug builds.
 nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git" }
 nih_plug_vizia = { git= "https://github.com/robbert-vdh/nih-plug.git"}
-atomic_float = "0.1"
+atomic_float = "1.1.0"
 # Uncomment the below line to disable the on-by-default VST3 feature to remove
 # the GPL compatibility requirement
 # nih_plug = { git = "https://github.com/robbert-vdh/nih-plug.git", default-features = false, features = ["assert_process_allocs"] }

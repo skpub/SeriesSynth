@@ -37,7 +37,7 @@ enum Waveform {
 }
 
 #[derive(Debug, PartialEq, Enum)]
-enum LFO_Dest {
+enum LfoDest {
     None,
     Phase,
     Gain,
@@ -140,7 +140,7 @@ struct SeriessynthParams {
     pub lfo_amp: FloatParam,
 
     #[id = "LFO dest"]
-    pub lfo_dest: EnumParam<LFO_Dest>,
+    pub lfo_dest: EnumParam<LfoDest>,
 }
 
 #[derive(Params)]
@@ -269,8 +269,8 @@ impl Default for SeriessynthParams {
                 "+ N Cent",
                 0,
                 IntRange::Linear {
-                    min: -1200,
-                    max: 1200,
+                    min: -100,
+                    max: 100,
                 },
             ),
             lfo: FloatParam::new(
@@ -289,7 +289,7 @@ impl Default for SeriessynthParams {
                     max: 1.0,
                 },
             ),
-            lfo_dest: EnumParam::new("LFO dest", LFO_Dest::None),
+            lfo_dest: EnumParam::new("LFO dest", LfoDest::None),
         }
     }
 }
@@ -321,12 +321,12 @@ impl Seriessynth {
 
         let lfo_phase_delta = lfo_hz / self.sample_rate;
         self.lfo_phase = (self.lfo_phase + lfo_phase_delta) % 1.0;
-        let lfo_phase_mod = if lfo_dest == LFO_Dest::Phase {
+        let lfo_phase_mod = if lfo_dest == LfoDest::Phase {
             1.0 + lfo_amp * (self.lfo_phase * consts::TAU).sin()
         } else {
             1.0
         };
-        let lfo_gain_mod = if lfo_dest == LFO_Dest::Gain {
+        let lfo_gain_mod = if lfo_dest == LfoDest::Gain {
             1.0 + lfo_amp * (self.lfo_phase * consts::TAU).sin()
         } else {
             1.0
