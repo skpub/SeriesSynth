@@ -1,7 +1,6 @@
 use nih_plug::prelude::*;
 use nih_plug::params::enums::Enum;
 use nih_plug_vizia::ViziaState;
-use rand::Rng;
 use std::array;
 use std::f32::{consts, EPSILON};
 use std::fmt::Debug;
@@ -372,8 +371,7 @@ impl Seriessynth {
                     }
                 }
                 if noise > EPSILON {
-                    let mut rng = rand::thread_rng();
-                    let f: f32 = rng.gen_range(-noise, noise);
+                    let f: f32 = rand::random_range(-noise..noise);
                     wave += f;
                 }
                 voice.phase += phase_delta;
